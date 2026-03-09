@@ -21,7 +21,7 @@ A demonstration repository showing how to connect **Factory I/O** to a **TwinCAT
    - Right‑click **References** in the PLC project.
    ![Library Repository](Images/Lib_Repo.png)
    - Choose **Library Repository → Install** and select the file from the `Dependencies` folder.
-   ![Install Library](Images/Install_Lib.png)g
+   ![Install Library](Images/Install_Lib.png)
    - Close the dialog when finished.
 4. Open the TwinCAT package manager and install **TF6250** (Modbus TCP).
 5. Activate the TwinCAT solution and start the simulation in Factory I/O.
