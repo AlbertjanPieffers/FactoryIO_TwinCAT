@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_IOMapper256" Id="{19ca47a4-964b-4995-a873-afbc7e94602f}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_IOMapper256
+VAR_INPUT
+    // Globale IO arrays
+    inputs  : ARRAY [0..31, 0..7] OF BOOL;
+END_VAR
+
+VAR_IN_OUT
+    outputs : ARRAY [0..255] OF BOOL;
+END_VAR
+
+VAR_OUTPUT
+    
+END_VAR
+
+VAR
+    i, j     : INT;
+    flatIndex: INT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+// ===========================
+// 1) Inputs 2D -> flat 0..255
+// ===========================
+FOR i := 0 TO 31 DO
+    FOR j := 0 TO 7 DO
+        flatIndex := i * 8 + j;
+        GVL_IO.input[flatIndex] := inputs[i, j];
+    END_FOR
+END_FOR;
+
+
+// ===========================
+// 2) Outputs flat -> global
+// ===========================
+FOR flatIndex := 0 TO 255 DO
+    outputs[flatIndex] := GVL_IO.Output[flatIndex];
+END_FOR;]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

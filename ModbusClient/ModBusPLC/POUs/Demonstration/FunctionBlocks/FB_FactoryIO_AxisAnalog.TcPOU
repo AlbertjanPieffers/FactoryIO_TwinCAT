@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_FactoryIO_AxisAnalog" Id="{5f5d049b-2f23-458d-a143-1f4e3849ddaa}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_FactoryIO_AxisAnalog
+VAR_INPUT
+    Enable      : BOOL;
+    TargetPos   : LREAL;
+    ActualPos   : LREAL;
+
+    MaxSpeed    : LREAL := 100;
+    Tolerance   : LREAL := 1;
+
+    CycleTime   : LREAL := 0.01;
+	error : LREAL;
+    step  : LREAL;
+END_VAR
+
+VAR_OUTPUT
+    CmdPos      : LREAL;
+    InPosition  : BOOL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+IF NOT Enable THEN
+    CmdPos := ActualPos;
+    InPosition := FALSE;
+    RETURN;
+END_IF
+
+CmdPos := TargetPos;
+InPosition := (ABS(TargetPos - ActualPos) <= Tolerance);]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

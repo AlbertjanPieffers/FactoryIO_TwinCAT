@@ -1,0 +1,291 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_FactoryIO_PickPlace2Axis" Id="{58c6cc60-7de8-494c-a4c1-8d5eaf2b3259}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_FactoryIO_PickPlace2Axis
+VAR_INPUT
+
+    Enable : BOOL;
+    Start  : BOOL;
+
+    PickX  : LREAL;
+    PickZ  : LREAL;
+
+    PlaceX : LREAL;
+    PlaceZ : LREAL;
+
+    SafeZ  : LREAL;
+
+    ActX   : LREAL;
+    ActZ   : LREAL;
+
+    MaterialDetected : BOOL ;
+
+	GrabTime : TIME := T#1500MS;   // time to "grab" at pick position
+END_VAR
+
+
+VAR_OUTPUT
+
+    CmdX : LREAL;
+    CmdZ : LREAL;
+
+    Grab : BOOL;
+
+    RotateCW : BOOL;
+
+    Busy : BOOL;
+    Done : BOOL;
+
+    State : INT;
+    Error : BOOL;
+    ErrorText : STRING(80);
+	
+END_VAR
+
+
+VAR
+	TonGrab : TON;
+    AxisX : FB_FactoryIO_AxisAnalog;
+    AxisZ : FB_FactoryIO_AxisAnalog;
+
+	TON_1: TON;
+	ReleaseTimer : TON;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// Default outputs each cycle
+Done := FALSE;
+Error := FALSE;
+ErrorText := '';
+
+
+// Grab timer runs only in Grab state
+TonGrab(IN := (State = 30), PT := GrabTime);
+
+
+CASE State OF
+
+// =================================================
+0: // idle
+// =================================================
+    Busy := FALSE;
+    Grab := FALSE;
+
+    IF Enable AND Start THEN
+        Busy := TRUE;
+        State := 10;
+    END_IF
+
+
+// =================================================
+10: // move above pick (SafeZ + PickX)
+// =================================================
+    Busy := TRUE;
+    Grab := FALSE;
+
+    AxisZ(
+        Enable := TRUE,
+        TargetPos := SafeZ,
+        ActualPos := ActZ
+    );
+
+    AxisX(
+        Enable := TRUE,
+        TargetPos := PickX,
+        ActualPos := ActX
+    );
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF AxisX.InPosition AND AxisZ.InPosition THEN
+        State := 20;
+    END_IF
+
+
+// =================================================
+20: // go down to pick (PickZ)
+// =================================================
+    Busy := TRUE;
+    Grab := FALSE;
+
+    AxisZ(
+        Enable := TRUE,
+        TargetPos := PickZ,
+        ActualPos := ActZ
+    );
+
+    AxisX(
+        Enable := TRUE,
+        TargetPos := PickX,
+        ActualPos := ActX
+    );
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF AxisZ.InPosition THEN
+        State := 30;
+    END_IF
+
+
+// =================================================
+30: // grab (wait GrabTime)
+// =================================================
+    Busy := TRUE;
+    Grab := TRUE;
+
+    // Hold position during grabbing
+    AxisZ(
+        Enable := TRUE,
+        TargetPos := PickZ,
+        ActualPos := ActZ
+    );
+
+    AxisX(
+        Enable := TRUE,
+        TargetPos := PickX,
+        ActualPos := ActX
+    );
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF TonGrab.Q THEN
+        State := 40;
+    END_IF
+
+
+// =================================================
+40: // lift (SafeZ)
+// =================================================
+    Busy := TRUE;
+    Grab := TRUE;
+
+    AxisZ(
+        Enable := TRUE,
+        TargetPos := SafeZ,
+        ActualPos := ActZ
+    );
+
+    AxisX(
+        Enable := TRUE,
+        TargetPos := PickX,
+        ActualPos := ActX
+    );
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF AxisZ.InPosition THEN
+        State := 50;
+    END_IF
+
+
+// =================================================
+50: // move to place X (PlaceX) at SafeZ
+// =================================================
+    Busy := TRUE;
+    Grab := TRUE;
+
+    AxisZ(
+        Enable := TRUE,
+        TargetPos := SafeZ,
+        ActualPos := ActZ
+    );
+
+    AxisX(
+        Enable := TRUE,
+        TargetPos := PlaceX,
+        ActualPos := ActX
+    );
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF AxisX.InPosition AND AxisZ.InPosition THEN
+        State := 60;
+    END_IF
+
+
+// =================================================
+60: // go down to place (PlaceZ)
+// =================================================
+    Busy := TRUE;
+    Grab := TRUE;
+
+    AxisZ(
+        Enable := TRUE,
+        TargetPos := PlaceZ,
+        ActualPos := ActZ
+    );
+
+    AxisX(
+        Enable := TRUE,
+        TargetPos := PlaceX,
+        ActualPos := ActX
+    );
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF AxisZ.InPosition THEN
+        State := 70;
+    END_IF
+
+
+// =================================================
+70: // release
+// =================================================
+
+Busy := TRUE;
+Grab := FALSE;
+
+// start timer
+ReleaseTimer(IN := TRUE, PT := T#1S);
+
+IF ReleaseTimer.Q THEN
+
+    ReleaseTimer(IN := FALSE);
+
+    State := 80;
+
+END_IF
+
+// =================================================
+80: // lift again (SafeZ) and finish
+// =================================================
+    Busy := TRUE;
+    Grab := FALSE;
+
+    AxisZ(
+        Enable := TRUE,
+        TargetPos := SafeZ,
+        ActualPos := ActZ
+    );
+
+    AxisX(
+        Enable := TRUE,
+        TargetPos := PlaceX,
+        ActualPos := ActX
+    );
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF AxisZ.InPosition THEN
+        Done := TRUE;
+        Busy := FALSE;
+        State := 0;
+    END_IF
+
+
+ELSE
+    // Fallback
+    Error := TRUE;
+    ErrorText := 'Invalid state';
+    State := 0;
+END_CASE]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

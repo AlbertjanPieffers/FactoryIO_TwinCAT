@@ -1,0 +1,237 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Pick_Place" Id="{d8a0df6e-cfac-4d4d-a75e-3d65680d7046}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Pick_Place
+VAR_INPUT
+    Enable   : BOOL;
+    Start    : BOOL; // pulse (1 cycle)
+    Reset    : BOOL;
+
+    PickX  : LREAL;
+    PickZ  : LREAL;
+    PlaceX : LREAL;
+    PlaceZ : LREAL;
+    SafeZ  : LREAL;
+
+    ActX   : LREAL;
+    ActZ   : LREAL;
+
+    GrabTime : TIME := T#500ms;
+END_VAR
+
+VAR_OUTPUT
+    CmdX : LREAL;
+    CmdZ : LREAL;
+
+    Grab : BOOL;
+
+    Busy : BOOL;
+    Done : BOOL;
+    Error : BOOL;
+    ErrorText : STRING(80);
+
+    State : INT;
+	bRotateCmd : BOOL;
+	bRotateCmdCCW : BOOL;
+END_VAR
+
+VAR
+    AxisX : FB_FactoryIO_AxisAnalog;
+    AxisZ : FB_FactoryIO_AxisAnalog;
+
+    StartTrig : R_TRIG;
+    TonGrab : TON;
+    TonRelease : TON;
+	 Rot1 : FB_PulseTrain;
+    Rot3 : FB_PulseTrain;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// Reset
+IF Reset THEN
+    State := 0;
+    Busy := FALSE;
+    Done := FALSE;
+    Error := FALSE;
+    ErrorText := '';
+END_IF
+
+Done := FALSE;
+Error := FALSE;
+ErrorText := '';
+
+StartTrig(CLK := Start);
+
+// Grab timer only in grab state
+TonGrab(IN := (State = 30), PT := GrabTime);
+
+// Release delay 1s in release state (optional, you wanted this)
+TonRelease(IN := (State = 70), PT := T#1S);
+
+CASE State OF
+
+0: // idle
+    Busy := FALSE;
+    Grab := FALSE;
+
+    // Hold current position
+    AxisX(Enable := FALSE, TargetPos := ActX, ActualPos := ActX);
+    AxisZ(Enable := FALSE, TargetPos := ActZ, ActualPos := ActZ);
+    CmdX := ActX;
+    CmdZ := ActZ;
+
+    IF Enable AND StartTrig.Q THEN
+        Busy := TRUE;
+        State := 10;
+    END_IF
+
+10: // move above pick (SafeZ + PickX)
+    Busy := TRUE;
+    Grab := FALSE;
+
+    AxisZ(Enable := TRUE, TargetPos := SafeZ, ActualPos := ActZ);
+    AxisX(Enable := TRUE, TargetPos := PickX, ActualPos := ActX);
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF AxisX.InPosition AND AxisZ.InPosition THEN
+        State := 20;
+    END_IF
+
+20: // go down to pick (PickZ)
+    Busy := TRUE;
+    Grab := FALSE;
+
+    AxisZ(Enable := TRUE, TargetPos := PickZ, ActualPos := ActZ);
+    AxisX(Enable := TRUE, TargetPos := PickX, ActualPos := ActX);
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF AxisZ.InPosition THEN
+        State := 30;
+    END_IF
+
+30: // grab (wait GrabTime)
+    Busy := TRUE;
+    Grab := TRUE;
+
+    AxisZ(Enable := TRUE, TargetPos := PickZ, ActualPos := ActZ);
+    AxisX(Enable := TRUE, TargetPos := PickX, ActualPos := ActX);
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF TonGrab.Q THEN
+        State := 40;
+    END_IF
+
+40: // lift (SafeZ)
+    Busy := TRUE;
+    Grab := TRUE;
+
+    AxisZ(Enable := TRUE, TargetPos := SafeZ, ActualPos := ActZ);
+    AxisX(Enable := TRUE, TargetPos := PickX, ActualPos := ActX);
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF AxisZ.InPosition THEN
+        State := 41;
+    END_IF
+	
+41: // ROTATE 1x 90° (only when robot done)
+    Rot1(
+        Enable := TRUE,
+        PulseTime := T#500ms,
+        PauseTime := T#500ms,
+        Count := 1
+    );
+
+    bRotateCmd := Rot1.Q;
+
+    IF Rot1.Done THEN
+        State := 50;
+    END_IF
+
+50: // move to place X at SafeZ
+    Busy := TRUE;
+    Grab := TRUE;
+
+    AxisZ(Enable := TRUE, TargetPos := SafeZ, ActualPos := ActZ);
+    AxisX(Enable := TRUE, TargetPos := PlaceX, ActualPos := ActX);
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF AxisX.InPosition AND AxisZ.InPosition THEN
+        State := 60;
+    END_IF
+
+60: // go down to place (PlaceZ)
+    Busy := TRUE;
+    Grab := TRUE;
+
+    AxisZ(Enable := TRUE, TargetPos := PlaceZ, ActualPos := ActZ);
+    AxisX(Enable := TRUE, TargetPos := PlaceX, ActualPos := ActX);
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF AxisZ.InPosition THEN
+        State := 70;
+    END_IF
+
+70: // release + wait 1s
+    Busy := TRUE;
+    Grab := FALSE;
+
+    // Hold position during release delay
+    AxisZ(Enable := TRUE, TargetPos := PlaceZ, ActualPos := ActZ);
+    AxisX(Enable := TRUE, TargetPos := PlaceX, ActualPos := ActX);
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF TonRelease.Q THEN
+        State := 80;
+    END_IF
+
+80: // lift again (SafeZ) and finish
+    Busy := TRUE;
+    Grab := FALSE;
+
+    AxisZ(Enable := TRUE, TargetPos := SafeZ, ActualPos := ActZ);
+    AxisX(Enable := TRUE, TargetPos := PlaceX, ActualPos := ActX);
+
+    CmdX := AxisX.CmdPos;
+    CmdZ := AxisZ.CmdPos;
+
+    IF AxisZ.InPosition THEN
+        Done := TRUE;
+        Busy := FALSE;
+        State := 90;
+    END_IF
+90: // Move CCW Back
+    Rot3(
+        Enable := TRUE,
+        PulseTime := T#500ms,
+        PauseTime := T#500ms,
+        Count := 1
+    );
+
+    bRotateCmdCCW := Rot3.Q;
+
+    IF Rot3.Done THEN
+        State := 0;
+    END_IF
+
+ELSE
+    Error := TRUE;
+    ErrorText := 'Invalid state';
+    Busy := FALSE;
+    State := 0;
+END_CASE]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

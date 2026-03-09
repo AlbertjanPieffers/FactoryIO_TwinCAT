@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <GVL Name="GVL_Factory_IO" Id="{b6f2067d-5ef2-4457-bbc0-d96a38ed440a}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	FIOinputs : ARRAY[0..31, 0..7] OF BOOL;
+	FIOoutputs : ARRAY [0..255] OF BOOL;
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

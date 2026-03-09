@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="MAIN" Id="{e8fbe9ec-1542-41ae-b58e-a7b3e7e6778f}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// Call Connection Program for Connection with Factory IO Modbus Server //
+Connection();
+// Call Demo Program
+DemoProgram();]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

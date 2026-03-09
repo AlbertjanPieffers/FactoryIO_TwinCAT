@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <DUT Name="ST_FIO_AxisIO" Id="{ae82dc49-1a08-4dfe-b557-7faee9b5f922}">
+    <Declaration><![CDATA[TYPE ST_FIO_AxisIO :
+STRUCT
+    SetPos : LREAL;   // output: position command to "analog output"
+    ActPos : LREAL;   // input: feedback from "analog input"
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

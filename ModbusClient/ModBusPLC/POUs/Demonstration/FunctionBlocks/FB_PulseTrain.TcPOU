@@ -1,0 +1,65 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_PulseTrain" Id="{ddca7bb2-05d4-41c9-a8e5-9e51d49f326f}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_PulseTrain
+VAR_INPUT
+    Enable     : BOOL;
+    PulseTime  : TIME := T#500ms;
+    PauseTime  : TIME := T#500ms;
+    Count      : INT := 1;      // number of pulses
+END_VAR
+
+VAR_OUTPUT
+    Q       : BOOL;  // output pulse signal
+    Busy    : BOOL;
+    Done    : BOOL;
+END_VAR
+
+VAR
+    t : TON;
+    phasePulse : BOOL;
+    counter : INT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[IF NOT Enable THEN
+    Q := FALSE;
+    Busy := FALSE;
+    Done := FALSE;
+    t(IN := FALSE);
+    phasePulse := TRUE;
+    counter := 0;
+    RETURN;
+END_IF
+
+Busy := TRUE;
+Done := FALSE;
+
+IF phasePulse THEN
+    Q := TRUE;
+    t(IN := TRUE, PT := PulseTime);
+ELSE
+    Q := FALSE;
+    t(IN := TRUE, PT := PauseTime);
+END_IF
+
+IF t.Q THEN
+    t(IN := FALSE);
+
+    IF phasePulse THEN
+        // pulse finished
+        counter := counter + 1;
+        phasePulse := FALSE;
+    ELSE
+        // pause finished
+        phasePulse := TRUE;
+    END_IF
+END_IF
+
+IF counter >= Count THEN
+    Q := FALSE;
+    Busy := FALSE;
+    Done := TRUE;
+END_IF]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_FactoryIO_Conveyor" Id="{ab59b41a-cef4-4d1e-8311-521a45d9d482}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_FactoryIO_Conveyor
+VAR_INPUT
+    bStart      : BOOL;
+    bStop       : BOOL;
+    bSensor     : BOOL;
+END_VAR
+
+VAR_OUTPUT
+    bMotor      : BOOL;
+    bRunning    : BOOL;
+    bProduct    : BOOL;
+END_VAR
+
+VAR
+    bRun : BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+// Run latch
+IF bStart THEN
+    bRun := TRUE;
+END_IF
+
+IF bStop THEN
+    bRun := FALSE;
+END_IF
+
+bMotor := bRun;
+bRunning := bRun;
+
+// Product detect
+bProduct := bSensor;]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

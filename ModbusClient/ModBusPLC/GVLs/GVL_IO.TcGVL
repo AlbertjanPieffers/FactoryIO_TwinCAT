@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <GVL Name="GVL_IO" Id="{ce7a7d11-1e38-4b76-9553-7ebc3956afe4}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	Input : ARRAY [0..255] OF BOOL;
+	Output : ARRAY [0..255] OF BOOL;
+	AnalogInput : ARRAY [0..63] OF REAL;
+	AnalogOutput : ARRAY [0..63] OF REAL;
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <DUT Name="ST_FIO_AxisConfig" Id="{d8298714-9bf6-416e-8a5c-c16d14771b2b}">
+    <Declaration><![CDATA[TYPE ST_FIO_AxisConfig :
+STRUCT
+    MinPos     : LREAL;    // engineering units (e.g. mm)
+    MaxPos     : LREAL;    // engineering units
+    Tolerance  : LREAL;    // within tolerance -> in position
+    Kp         : LREAL;    // proportional gain (engineering units per second)
+    MaxVel     : LREAL;    // max velocity (engineering units per second)
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

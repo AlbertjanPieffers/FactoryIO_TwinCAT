@@ -1,0 +1,734 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="DemoProgram" Id="{e38e842a-3a19-47c8-97bf-fe35b7141153}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM DemoProgram
+VAR
+	DemoEncoder_1: FB_Encoder;
+	DemoEncoder_2: FB_Encoder;
+	fEncoder1_Position: LREAL;
+	fEncoder1_Velocity: LREAL;
+	bEncoder1_Error: BOOL;
+	nEncoder1_ErrorID: UINT;
+	fEncoder2_Position: LREAL;
+	fEncoder2_Velocity: LREAL;
+	bEncoder2_Error: BOOL;
+	nEncoder2_ErrorID: UINT;
+	Start: BOOL;
+	 
+	ConvLeft: BOOL;
+	ConvRight: BOOL;
+	RotCW_1: BOOL;
+	RotCCW_1: BOOL;
+	Grab_1: BOOL;
+	ProductSensorBlue: BOOL;
+	ProductSensorGreen: BOOL;
+	X_Cmd_1: REAL;
+	Z_Cmd_1: REAL;
+	X_Act_1: REAL;
+	Z_Act_1: REAL;
+	bXInPos_1: BOOL;
+	bZInPos_1: BOOL;
+	Sensor_ProductInFrontOfGripper: BOOL;
+	LastKnownColour: STRING(INT#4);
+	T_Grab_1: TON ;
+	T_Rot_1: TON;
+	T_Release_1: TON;
+	T_EndTimer: TON;
+	UseAdvancedMode: BOOL := TRUE;
+	T_Rot_0: TON;
+	ProductColour: REAL;
+	T_Grab_2: TON;
+	T_Rot_3: TON;
+	T_Rot_4: TON;
+	SafeX_1: REAL := 0;
+END_VAR
+VAR
+    // -----------------------------
+    // I/O mapping (adjust indices)
+    // -----------------------------
+    ProductSensor : BOOL;
+
+    ConvAll : BOOL;
+
+    RotCW  : BOOL;
+    RotCCW : BOOL;
+    Grab   : BOOL;
+
+    // -----------------------------
+    // "Analog" feedback/commands
+    // -----------------------------
+    X_Act : LREAL;
+    Z_Act : LREAL;
+    X_Cmd : LREAL;
+    Z_Cmd : LREAL;
+
+    // -----------------------------
+    // Targets (demo values)
+    // -----------------------------
+    PickX  : LREAL := 6.0;
+    PickZ  : LREAL := 10.0;
+
+    PlaceX : LREAL := 7.0;
+    PlaceZ : LREAL := 9.0;
+
+    SafeZ  : LREAL := 0.0;
+	
+	PickX_1  : LREAL := 1.0;
+    PickZ_1  : LREAL := 10.0;
+
+    PlaceX_1 : LREAL := 10.0;
+    PlaceZ_1 : LREAL := 10.0;
+
+    SafeZ_1  : LREAL := 0.0;
+
+    Tol    : LREAL := 1.0;
+
+    // -----------------------------
+    // State machine
+    // -----------------------------
+    State : INT := 0;
+	StateAdvanced : INT := 0;
+
+    // -----------------------------
+    // Timers
+    // -----------------------------
+    T_Grab    : TON;
+    T_Release : TON;
+    T_Rot     : TON;
+
+    // -----------------------------
+    // Rotation pulse control
+    // -----------------------------
+    RotPulseActive : BOOL;
+
+    // -----------------------------
+    // Helpers
+    // -----------------------------
+    bXInPos : BOOL;
+    bZInPos : BOOL;
+END_VAR
+
+VAR_INPUT
+	
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[DemoEncoder_1(
+	bEnable:= , 
+	bA_Input:= GVL_IO.Input[8],
+	bB_Input:= GVL_IO.Input[9], 
+	bInvertDirection:= , 
+	fUnitPerCount:= , 
+	nVelSampleMs:= , 
+	bRefSensor:= , 
+	bRefCommand:= , 
+	fRefPosition:= , 
+	nCount=> , 
+	fPosition=> fEncoder1_Position, 
+	fVelocity=> fEncoder1_Velocity, 
+	bReferenced=> , 
+	bError=> bEncoder1_Error, 
+	nErrorId=> nEncoder1_ErrorID);
+	
+	
+	
+										// =====================================================
+										// Demo Program Simple Pick and Place
+										// =====================================================	
+		
+	// =====================================================
+	// Apply outputs (all 3 conveyors together)
+	// =====================================================
+	GVL_IO.Output[0] := ConvAll;
+	GVL_IO.Output[1] := ConvAll;
+	GVL_IO.Output[2] := ConvAll;
+	GVL_IO.Output[4] := ConvAll;
+	// Rotation interlock
+	GVL_IO.Output[28] := RotCW ;
+	GVL_IO.Output[29] := RotCCW ;
+	
+	// Grab
+	GVL_IO.Output[3] := Grab;
+	
+	// Analog commands (map these to your Modbus registers / analog outputs)
+	GVL_IO.AnalogOutput[0] := LREAL_TO_WORD(X_Cmd ); 
+	GVL_IO.AnalogOutput[1] := LREAL_TO_WORD(Z_Cmd );
+	
+
+// =====================================================
+// Read inputs (adjust mapping here)
+// =====================================================
+ProductSensor := GVL_IO.Input[7];
+X_Act := GVL_IO.AnalogInput[0];
+Z_Act := GVL_IO.AnalogInput[1];
+
+// =====================================================
+// Default outputs each scan
+// =====================================================
+//GVL_IO.Output[0] := FALSE; // conveyor 1
+//GVL_IO.Output[1] := FALSE; // conveyor 2
+//GVL_IO.Output[2] := FALSE; // conveyor 3
+
+//RotCW := FALSE;
+//RotCCW := FALSE;
+Grab := FALSE;
+
+// Rotation coils default off (interlock)
+
+
+
+// Grab output default off
+GVL_IO.Output[6] := FALSE; // grab
+
+// Default hold current command
+X_Cmd := X_Cmd;
+Z_Cmd := Z_Cmd;
+
+IF ConvAll THEN
+	GVL_IO.Output[11] := TRUE; //Green Light
+	GVL_IO.Output[10]:= FALSE;
+	ELSE IF NOT ConvAll THEN
+		GVL_IO.Output[10]:= TRUE; //Yellow Light
+		GVL_IO.Output[11]:= FALSE;
+	END_IF
+END_IF
+
+IF Connection.MB_Client.xErrReadBoolFB THEN 
+	GVL_IO.Output[9] := TRUE; //Red Light
+END_IF
+// =====================================================
+// Simple in-position checks (needs real feedback)
+// =====================================================
+bXInPos := (ABS(X_Cmd - X_Act) <= Tol);
+bZInPos := (ABS(Z_Cmd - Z_Act) <= Tol);
+
+
+// =====================================================
+// State machine
+// =====================================================
+CASE State OF
+
+// -----------------------------------------------------
+// 0: conveyors on, wait product
+// -----------------------------------------------------
+0:
+    ConvAll := TRUE;
+
+	IF Sensor_ProductInFrontOfGripper THEN
+        ConvAll := FALSE;
+        State := 110;
+    END_IF
+	
+    IF ProductSensor  THEN
+        ConvAll := FALSE;
+        State := 10;
+    END_IF
+
+
+
+// -----------------------------------------------------
+// 10: move above pick (SafeZ + PickX)
+// -----------------------------------------------------
+10:
+    ConvAll := FALSE;
+
+    X_Cmd := PickX;
+    Z_Cmd := SafeZ;
+
+    IF (ABS(PickX - X_Act) <= Tol) AND (ABS(SafeZ - Z_Act) <= Tol) THEN
+        State := 20;
+    END_IF
+
+
+// -----------------------------------------------------
+// 20: go down to pick (PickZ)
+// -----------------------------------------------------
+20:
+    ConvAll := FALSE;
+
+    X_Cmd := PickX;
+    Z_Cmd := PickZ;
+
+    IF (ABS(PickZ - Z_Act) <= Tol) THEN
+        State := 30;
+    END_IF
+
+
+// -----------------------------------------------------
+// 30: grab for 0.5s
+// -----------------------------------------------------
+30:
+    ConvAll := FALSE;
+
+    X_Cmd := PickX;
+    Z_Cmd := PickZ;
+
+    Grab := TRUE;
+
+    T_Grab(IN := TRUE, PT := T#250ms);
+    IF T_Grab.Q THEN
+        T_Grab(IN := FALSE);
+        State := 40;
+    END_IF
+
+
+// -----------------------------------------------------
+// 40: lift to SafeZ (keep grab)
+// -----------------------------------------------------
+40:
+    ConvAll := FALSE;
+
+    X_Cmd := PickX;
+    Z_Cmd := SafeZ;
+
+    Grab := TRUE;
+
+    IF (ABS(SafeZ - Z_Act) <= Tol) THEN
+        State := 50;
+    END_IF
+
+
+// -----------------------------------------------------
+// 50: rotate CW pulse 0.5s (coil 4)
+// -----------------------------------------------------
+50:
+    ConvAll := FALSE;
+
+    X_Cmd := PickX;
+    Z_Cmd := SafeZ;
+
+    Grab := TRUE;
+
+    GVL_IO.Output[50] := TRUE;
+
+    T_Rot_0(IN := TRUE, PT := T#1500MS);
+    IF T_Rot_0.Q THEN
+        T_Rot_0(IN := FALSE);
+        State := 60;
+    END_IF
+
+
+// -----------------------------------------------------
+// 60: move above place (SafeZ + PlaceX)
+// -----------------------------------------------------
+60:
+    ConvAll := FALSE;
+	GVL_IO.Output[50] := FALSE;
+    X_Cmd := PlaceX;
+    Z_Cmd := SafeZ;
+
+    Grab := TRUE;
+
+    IF (ABS(PlaceX - X_Act) <= Tol) AND (ABS(SafeZ - Z_Act) <= Tol) THEN
+        State := 70;
+    END_IF
+
+
+// -----------------------------------------------------
+// 70: go down to place (PlaceZ)
+// -----------------------------------------------------
+70:
+    ConvAll := FALSE;
+
+    X_Cmd := PlaceX;
+    Z_Cmd := PlaceZ;
+
+    Grab := TRUE;
+
+    IF (ABS(PlaceZ - Z_Act) <= Tol) THEN
+        State := 80;
+    END_IF
+
+
+// -----------------------------------------------------
+// 80: release and wait 1s
+// -----------------------------------------------------
+80:
+    ConvAll := FALSE;
+
+    X_Cmd := PlaceX;
+    Z_Cmd := PlaceZ;
+
+    Grab := FALSE;
+
+    T_Release(IN := TRUE, PT := T#750MS);
+    IF T_Release.Q THEN
+        T_Release(IN := FALSE);
+        State := 90;
+    END_IF
+
+
+// -----------------------------------------------------
+// 90: lift again to SafeZ
+// -----------------------------------------------------
+90:
+    ConvAll := FALSE;
+
+    X_Cmd := PlaceX;
+    Z_Cmd := SafeZ;
+
+    Grab := FALSE;
+
+    IF (ABS(SafeZ - Z_Act) <= Tol) THEN
+        State := 100;
+    END_IF
+
+
+// -----------------------------------------------------
+// 100: rotate CCW pulse 0.5s (coil 5)
+// -----------------------------------------------------
+100:
+    ConvAll := FALSE;
+
+    X_Cmd := PlaceX;
+    Z_Cmd := SafeZ;
+
+    Grab := FALSE;
+
+    GVL_IO.Output[51] := TRUE;
+
+    T_Rot(IN := TRUE, PT := T#400MS);
+    IF T_Rot.Q THEN
+        T_Rot(IN := FALSE);
+        State := 110;
+    END_IF
+
+
+// -----------------------------------------------------
+// 110: conveyors on again, wait sensor clear
+// -----------------------------------------------------
+110:
+	GVL_IO.Output[51] := FALSE;
+	IF NOT Sensor_ProductInFrontOfGripper THEN
+		ConvAll := TRUE;
+	END_IF
+    
+
+    IF NOT ProductSensor OR NOT Sensor_ProductInFrontOfGripper THEN
+        State := 0;
+    END_IF
+
+
+ELSE
+    State := 0;
+END_CASE
+
+
+											// =====================================================
+											// Demo Program Advanced Pick and Place
+											// =====================================================	
+		
+	// =====================================================
+	// Apply outputs (all 3 conveyors together)
+	// =====================================================
+	GVL_IO.Output[14] := ConvLeft;
+	GVL_IO.Output[15] := ConvLeft;
+	GVL_IO.Output[16] := ConvLeft;
+	GVL_IO.Output[17] := ConvLeft;
+	GVL_IO.Output[18] := ConvLeft;
+	GVL_IO.Output[19] := ConvLeft;
+	GVL_IO.Output[20] := ConvLeft;
+	GVL_IO.Output[21] := ConvRight;
+	GVL_IO.Output[22] := ConvRight;
+	GVL_IO.Output[23] := ConvRight;
+	GVL_IO.Output[24] := ConvRight;
+	GVL_IO.Output[25] := ConvRight;
+	GVL_IO.Output[26] := ConvRight;
+	GVL_IO.Output[27] := ConvRight;
+	
+	
+	// Grab
+	GVL_IO.Output[5] := Grab_1;
+	
+	// Analog commands (map these to your Modbus registers / analog outputs)
+	GVL_IO.AnalogOutput[2] := LREAL_TO_WORD(X_Cmd_1 ); 
+	GVL_IO.AnalogOutput[3] := LREAL_TO_WORD(Z_Cmd_1 );
+	
+
+// =====================================================
+// Read inputs (adjust mapping here)
+// =====================================================
+ProductSensorBlue := GVL_IO.Input[12];
+ProductSensorGreen := GVL_IO.Input[13];
+Sensor_ProductInFrontOfGripper := GVL_IO.Input[6];
+X_Act_1 := GVL_IO.AnalogInput[2];
+Z_Act_1 := GVL_IO.AnalogInput[3];
+ProductColour := GVL_IO.AnalogInput[4];
+
+
+// =====================================================
+// Default outputs each scan
+// =====================================================
+//GVL_IO.Output[0] := FALSE; // conveyor 1
+//GVL_IO.Output[1] := FALSE; // conveyor 2
+//GVL_IO.Output[2] := FALSE; // conveyor 3
+
+
+Grab_1 := FALSE;
+ConvLeft := FALSE;
+ConvRight := FALSE;
+
+// Default hold current command
+X_Cmd_1 := X_Cmd_1;
+Z_Cmd_1 := Z_Cmd_1;
+
+
+// =====================================================
+// Simple in-position checks (needs real feedback)
+// =====================================================
+bXInPos_1 := (ABS(X_Cmd_1 - X_Act_1) <= Tol);
+bZInPos_1 := (ABS(Z_Cmd_1 - Z_Act_1) <= Tol);
+
+// =====================================================
+// Colour Helpers
+// =====================================================
+
+IF Connection.MB_Client.arReaded[4] = 0.1 THEN
+    LastKnownColour := 'BLUE';
+ELSIF Connection.MB_Client.arReaded[4] = 5 THEN
+    LastKnownColour := 'GREEN';
+END_IF
+
+// =====================================================
+// State machine
+// =====================================================
+IF UseAdvancedMode THEN
+	
+	CASE StateAdvanced OF
+	
+	// -----------------------------------------------------
+	// 0: Start Cycle
+	// -----------------------------------------------------
+	0:
+		IF Sensor_ProductInFrontOfGripper THEN
+			StateAdvanced := 10;
+		END_IF
+		  
+		
+	
+	// -----------------------------------------------------
+	// 10: move above pick (SafeZ + PickX)
+	// -----------------------------------------------------
+	10:
+		
+	
+		X_Cmd_1 := PickX_1;
+		Z_Cmd_1 := SafeZ_1;
+	
+		IF (ABS(PickX_1 - X_Act_1) <= Tol) AND (ABS(SafeZ_1 - Z_Act_1) <= Tol) THEN
+			StateAdvanced := 20;
+		END_IF
+	
+	
+	// -----------------------------------------------------
+	// 20: go down to pick (PickZ)
+	// -----------------------------------------------------
+	20:
+		
+	
+		X_Cmd_1 := PickX_1;
+		Z_Cmd_1 := PickZ_1;
+	
+		IF (ABS(PickZ_1 - Z_Act_1) <= Tol) THEN
+			StateAdvanced := 30;
+		END_IF
+	
+	
+	// -----------------------------------------------------
+	// 30: grab for 0.5s
+	// -----------------------------------------------------
+	30:
+		
+	
+		X_Cmd_1 := PickX_1;
+		Z_Cmd_1 := PickZ_1;
+	
+		Grab_1 := TRUE;
+	
+		T_Grab_2(IN := TRUE, PT := T#250MS);
+		IF T_Grab_2.Q THEN
+			T_Grab_2(IN := FALSE);
+			StateAdvanced := 40;
+		END_IF
+	
+	
+	// -----------------------------------------------------
+	// 40: lift to SafeZ (keep grab)
+	// -----------------------------------------------------
+	40:
+		
+	
+		X_Cmd_1 := PickX_1;
+		Z_Cmd_1 := SafeZ_1;
+	
+		Grab_1 := TRUE;
+		
+		IF (ABS(SafeZ_1 - Z_Act_1) <= Tol) THEN
+			StateAdvanced := 45;
+		END_IF
+	
+	// -----------------------------------------------------
+	// 45: Prepare move based on colour
+	// -----------------------------------------------------
+	45:
+		
+		IF LastKnownColour = 'BLUE' THEN
+			StateAdvanced := 50;
+		END_IF
+		
+		IF LastKnownColour = 'GREEN' THEN
+			StateAdvanced := 55;
+		END_IF
+	
+	// -----------------------------------------------------
+	// 50: rotate CW pulse 0.5s (coil 4)
+	// -----------------------------------------------------
+	50:
+		
+	
+		X_Cmd_1 := PickX_1;
+		Z_Cmd_1 := SafeZ_1;
+	
+		Grab_1 := TRUE;
+		ConvRight := FALSE;
+		GVL_IO.Output[12] := TRUE;
+	
+		T_Rot_3(IN := TRUE, PT := T#1200MS);
+		IF T_Rot_3.Q THEN
+			T_Rot_3(IN := FALSE);
+			StateAdvanced := 60;
+		END_IF
+	
+	// -----------------------------------------------------
+	// 55: rotate CCW pulse 0.5s (coil 4)
+	// -----------------------------------------------------
+	55:
+		
+		X_Cmd_1 := PickX_1;
+		Z_Cmd_1 := SafeZ_1;
+	
+		Grab_1 := TRUE;
+	
+		GVL_IO.Output[13] := TRUE;
+	
+		T_Rot_4(IN := TRUE, PT := T#1200MS);
+		IF T_Rot_4.Q THEN
+			T_Rot_4(IN := FALSE);
+			StateAdvanced := 60;
+		END_IF
+	
+	
+	// -----------------------------------------------------
+	// 60: move above place (SafeZ + PlaceX)
+	// -----------------------------------------------------
+	60:
+		GVL_IO.Output[12] := FALSE;
+		GVL_IO.Output[13] := FALSE;
+		X_Cmd_1 := PlaceX_1;
+		Z_Cmd_1 := SafeZ_1;
+	
+		Grab_1 := TRUE;
+	
+		IF (ABS(PlaceX_1 - X_Act_1) <= Tol) AND (ABS(SafeZ_1 - Z_Act_1) <= Tol) THEN
+			StateAdvanced := 70;
+		END_IF
+	
+	
+	// -----------------------------------------------------
+	// 70: go down to place (PlaceZ)
+	// -----------------------------------------------------
+	70:
+		
+	
+		X_Cmd_1 := PlaceX_1;
+		Z_Cmd_1 := PlaceZ_1;
+	
+		Grab_1 := TRUE;
+	
+		IF (ABS(PlaceZ_1 - Z_Act_1) <= Tol) THEN
+			StateAdvanced := 80;
+		END_IF
+	
+	
+	// -----------------------------------------------------
+	// 80: release and wait 1s
+	// -----------------------------------------------------
+	80:
+		
+	
+		X_Cmd_1 := PlaceX_1;
+		Z_Cmd_1 := PlaceZ_1;
+	
+		Grab_1 := FALSE;
+	
+		T_Release_1(IN := TRUE, PT := T#750MS);
+		IF T_Release_1.Q THEN
+			T_Release_1(IN := FALSE);
+			StateAdvanced := 90;
+		END_IF
+	
+	
+	// -----------------------------------------------------
+	// 90: lift again to SafeZ
+	// -----------------------------------------------------
+	90:
+		
+	
+		X_Cmd_1 := SafeX_1;
+		Z_Cmd_1 := SafeZ_1;
+	
+		Grab_1 := FALSE;
+	
+		IF (ABS(SafeZ_1 - Z_Act_1) <= Tol) THEN
+			StateAdvanced := 100;
+		END_IF
+	
+	
+	// -----------------------------------------------------
+	// 100: SPARE Step
+	// -----------------------------------------------------
+	100:
+		X_Cmd_1 := PickX_1;
+		Z_Cmd_1 := SafeZ_1;
+	
+		Grab_1 := TRUE;
+	
+		GVL_IO.Output[13] := TRUE;
+	
+		T_Rot_4(IN := TRUE, PT := T#1200MS);
+		IF T_Rot_4.Q THEN
+			T_Rot_4(IN := FALSE);
+			StateAdvanced := 110;
+		END_IF
+			
+		
+	
+	
+	// -----------------------------------------------------
+	// 110: Start Conveyors
+	// -----------------------------------------------------
+	110:
+		IF LastKnownColour = 'BLUE' THEN
+			ConvRight := TRUE;
+		END_IF
+		
+		IF LastKnownColour = 'GREEN' THEN
+			ConvLeft := TRUE;
+		END_IF
+	
+		T_EndTimer(IN := TRUE, PT := T#750MS);
+		IF T_EndTimer.Q THEN
+			T_EndTimer(IN := FALSE);
+			StateAdvanced := 0;
+		END_IF
+			   
+	
+	
+	ELSE
+		StateAdvanced := 0;
+	END_CASE
+	
+END_IF	
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

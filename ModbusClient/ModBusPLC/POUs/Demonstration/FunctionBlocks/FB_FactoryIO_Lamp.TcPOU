@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_FactoryIO_Lamp" Id="{d0eaf3be-7893-4330-b027-41bd2241c42b}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_FactoryIO_Lamp
+VAR_INPUT
+    bOn : BOOL;
+END_VAR
+
+VAR_OUTPUT
+    OutSignal : BOOL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[OutSignal := bOn;]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

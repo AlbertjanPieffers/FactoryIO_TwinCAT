@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="Connection" Id="{b411a620-aafb-44d5-8842-9f84323f3827}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM Connection
+VAR
+	MB_Client: ModBus_For_Factory_IO;
+	IO_Mapper: FB_IOMapper256;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+	MB_Client(
+	axInputs:= GVL_Factory_IO.FIOoutputs, 
+	arInputs:= GVL_IO.AnalogOutput, 
+	sIPaddr:= '127.0.0.1', 
+	uiTCPPort:= 505, 
+	iUnitID:= 1, 
+	iNumberOfBoolInputs:= 256, 
+	iNumberOfRegInputs:= 64, 
+	iNumberOfBoolOutputs:= 256, 
+	iNumberOfRegOutputs:= 64, 
+	xStart:= TRUE, 
+	axReaded=> GVL_Factory_IO.FIOinputs, 
+	arReaded=> GVL_IO.AnalogInput, 
+	xErrReadBoolFB=> , 
+	udiErrNumberReadBoolFB=> , 
+	sErrorDescriptionReadBoolFB=> , 
+	xErrReadRegFB=> , 
+	udiErrNumberReadRegFB=> , 
+	sErrorDescriptionReadRegFB=> , 
+	xErrWriteBoolFB=> , 
+	udiErrNumberWriteBoolFB=> , 
+	sErrorDescriptionWriteBoolFB=> , 
+	xErrWriteRegFB=> , 
+	udiErrNumberWriteRegFB=> , 
+	sErrorDescriptionWriteRegFB=> );
+	
+	
+	
+	IO_Mapper(inputs:= GVL_Factory_IO.FIOinputs, outputs:= GVL_Factory_IO.FIOOutputs );
+	
+	
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

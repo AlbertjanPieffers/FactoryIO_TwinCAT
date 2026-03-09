@@ -1,0 +1,218 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Encoder" Id="{71f65223-bae8-4277-878d-58ee131788ed}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Encoder
+VAR_INPUT
+    bEnable         : BOOL := TRUE;
+
+    bA_Input              : BOOL;
+    bB_Input              : BOOL;
+
+    bInvertDirection: BOOL := FALSE;
+
+    fUnitPerCount   : LREAL := 1.0;     // engineering units per count (must be > 0)
+    nVelSampleMs    : UINT  := 10;      // speed update interval in ms (e.g. 5..50)
+
+    // Optional referencing
+    bRefSensor      : BOOL := FALSE;    // e.g. IO_Control.DigitalInput[RefSensor_Index].bDesiredInput
+    bRefCommand     : BOOL := FALSE;    // e.g. HMI button
+    fRefPosition    : LREAL := 0.0;     // desired position when referencing happens
+END_VAR
+
+VAR_OUTPUT
+    nCount      : DINT;     // raw counts
+    fPosition   : LREAL;    // (nCount * fUnitPerCount) - fOffset
+    fVelocity   : LREAL;    // units per second
+    bReferenced : BOOL;
+
+    bError      : BOOL;
+    nErrorId    : UINT;
+END_VAR
+
+VAR
+    // 1ms ticker / time base (no external libs)
+    fbMsTicker      : TON;
+    dwCurrentTimeMs : UDINT;
+    dwPrevVelTimeMs : UDINT;
+
+    // Quadrature decode
+    byPrevAB : BYTE;
+    byNowAB  : BYTE;
+
+    // Velocity sampling
+    nPrevVelCount : DINT;
+
+    // Referencing
+    rtRefSensor  : R_TRIG;
+    rtRefCommand : R_TRIG;
+
+    fOffset      : LREAL;
+
+    // Internals
+    nDelta       : DINT;
+    fDirSign     : LREAL;
+    dtMs         : UDINT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+// =====================================================
+// Map your ref sensor like you requested (example line)
+// =====================================================
+// bRefSensor := IO_Control.DigitalInput[RefSensor_Index].bDesiredInput;
+
+
+// =========================
+// 0) Time base (1ms ticker)
+// =========================
+fbMsTicker(IN := TRUE, PT := T#1MS);
+
+IF fbMsTicker.Q THEN
+    fbMsTicker(IN := FALSE);
+    fbMsTicker(IN := TRUE);
+
+    IF dwCurrentTimeMs = 16#FFFFFFFF THEN
+        dwCurrentTimeMs := 0;
+    ELSE
+        dwCurrentTimeMs := dwCurrentTimeMs + 1;
+    END_IF
+END_IF;
+
+
+// ======================
+// 1) Basic guards/default
+// ======================
+bError   := FALSE;
+nErrorId := 0;
+
+IF NOT bEnable THEN
+    // No disable-state text/flags; just do nothing and keep last values
+    RETURN;
+END_IF;
+
+IF fUnitPerCount <= 0.0 THEN
+    bError   := TRUE;
+    nErrorId := 1; // invalid scaling
+    RETURN;
+END_IF;
+
+IF bInvertDirection THEN
+    fDirSign := -1.0;
+ELSE
+    fDirSign := 1.0;
+END_IF;
+
+
+// ==================================
+// 2) Quadrature A/B position counting
+//    Valid sequence: 00 -> 01 -> 11 -> 10 -> 00 (and reverse)
+// ==================================
+byNowAB := 0;
+IF bA_Input THEN byNowAB := byNowAB OR 1; END_IF;   // bit0 = A
+IF bB_Input THEN byNowAB := byNowAB OR 2; END_IF;   // bit1 = B
+
+IF byNowAB <> byPrevAB THEN
+    // Transition table (prev -> now) gives delta in counts:
+    // Forward: 00->01, 01->11, 11->10, 10->00  => +1
+    // Reverse: 00->10, 10->11, 11->01, 01->00  => -1
+    nDelta := 0;
+
+    CASE byPrevAB OF
+        0: // 00
+            CASE byNowAB OF
+                1: nDelta :=  1; // 00->01
+                2: nDelta := -1; // 00->10
+                ELSE nDelta := 0;
+            END_CASE
+
+        1: // 01
+            CASE byNowAB OF
+                3: nDelta :=  1; // 01->11
+                0: nDelta := -1; // 01->00
+                ELSE nDelta := 0;
+            END_CASE
+
+        3: // 11
+            CASE byNowAB OF
+                2: nDelta :=  1; // 11->10
+                1: nDelta := -1; // 11->01
+                ELSE nDelta := 0;
+            END_CASE
+
+        2: // 10
+            CASE byNowAB OF
+                0: nDelta :=  1; // 10->00
+                3: nDelta := -1; // 10->11
+                ELSE nDelta := 0;
+            END_CASE
+        ELSE
+            nDelta := 0;
+    END_CASE
+
+    // If you want: flag invalid jumps (e.g. 00->11) as error
+    IF nDelta = 0 THEN
+        // invalid / bounce / skipped state
+        bError   := TRUE;
+        nErrorId := 2; // invalid AB transition
+    ELSE
+        // Apply direction sign
+        IF fDirSign < 0.0 THEN
+            nDelta := -nDelta;
+        END_IF;
+
+        nCount := nCount + nDelta;
+    END_IF;
+
+    byPrevAB := byNowAB;
+END_IF;
+
+
+// =============================
+// 3) Position in engineering units
+// =============================
+fPosition := (DINT_TO_LREAL(nCount) * fUnitPerCount) - fOffset;
+
+
+// =============================
+// 4) Velocity (sampled every nVelSampleMs)
+// =============================
+IF dwPrevVelTimeMs = 0 THEN
+    dwPrevVelTimeMs := dwCurrentTimeMs;
+    nPrevVelCount   := nCount;
+ELSE
+    dtMs := dwCurrentTimeMs - dwPrevVelTimeMs;
+
+    IF dtMs >= UINT_TO_UDINT(nVelSampleMs) THEN
+        // units/s = (deltaCounts * unitPerCount) / (dtMs/1000)
+        fVelocity := (DINT_TO_LREAL(nCount - nPrevVelCount) * fUnitPerCount) / (UDINT_TO_LREAL(dtMs) / 1000.0);
+
+        dwPrevVelTimeMs := dwCurrentTimeMs;
+        nPrevVelCount   := nCount;
+    END_IF;
+END_IF;
+
+
+// =============================
+// 5) Optional referencing (simple)
+// =============================
+rtRefSensor(CLK := bRefSensor);
+rtRefCommand(CLK := bRefCommand);
+
+// Reference on sensor rising edge
+IF rtRefSensor.Q THEN
+    fOffset     := (DINT_TO_LREAL(nCount) * fUnitPerCount) - fRefPosition;
+    bReferenced := TRUE;
+END_IF;
+
+// Manual reference only allowed when sensor is active (optional rule)
+IF rtRefCommand.Q THEN
+    IF bRefSensor THEN
+        fOffset     := (DINT_TO_LREAL(nCount) * fUnitPerCount) - fRefPosition;
+        bReferenced := TRUE;
+    ELSE
+        bError   := TRUE;
+        nErrorId := 3; // ref command without sensor
+    END_IF;
+END_IF;]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

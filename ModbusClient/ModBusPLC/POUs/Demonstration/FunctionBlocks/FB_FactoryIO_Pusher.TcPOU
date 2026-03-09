@@ -1,0 +1,51 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_FactoryIO_Pusher" Id="{7643c318-3c8b-4385-a8f8-d2d4463c1821}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_FactoryIO_Pusher
+VAR_INPUT
+    bPushCmd      : BOOL;
+    bRetractCmd   : BOOL;
+    bExtendedSens : BOOL;
+    bRetractedSens: BOOL;
+END_VAR
+
+VAR_OUTPUT
+    bExtend       : BOOL;
+    bRetract      : BOOL;
+    bBusy         : BOOL;
+END_VAR
+
+VAR
+    state : INT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[CASE state OF
+
+0: // idle
+    bBusy := FALSE;
+
+    IF bPushCmd THEN
+        state := 10;
+    END_IF
+
+10: // extend
+    bExtend := TRUE;
+    bRetract := FALSE;
+    bBusy := TRUE;
+
+    IF bExtendedSens THEN
+        state := 20;
+    END_IF
+
+20: // retract
+    bExtend := FALSE;
+    bRetract := TRUE;
+
+    IF bRetractedSens THEN
+        state := 0;
+    END_IF
+
+END_CASE]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
